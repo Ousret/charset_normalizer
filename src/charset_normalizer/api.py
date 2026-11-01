@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import logging
 from functools import lru_cache
 from os import PathLike
@@ -47,6 +48,23 @@ IANA_SUPPORTED_MB_FIRST: list[str] = sorted(
 )
 
 
+def _partial_decode(sequences: bytes | bytearray, encoding: str) -> str:
+    try:
+        return str(sequences, encoding=encoding)
+    except UnicodeDecodeError as error:
+        try:
+            # If possible use the incremental decoder for the encoding.
+            incdec = codecs.getincrementaldecoder(encoding)()
+            return incdec.decode(sequences)
+        except LookupError:
+            # If there is no incremental decoder for this encoding, then
+            # try decoding again with up to 3 problematic bytes removed.
+            if len(sequences) - error.start <= 3:
+                return str(sequences[:error.start], encoding=encoding)
+            else:
+                raise error
+
+
 def from_bytes(
     sequences: bytes | bytearray,
     steps: int = 5,
@@ -58,6 +76,7 @@ def from_bytes(
     explain: bool = False,
     language_threshold: float = 0.1,
     enable_fallback: bool = True,
+    partial: bool = False,
 ) -> CharsetMatches:
     """
     Given a raw bytes sequence, return the best possibles charset usable to render str objects.
@@ -75,7 +94,13 @@ def from_bytes(
     By default the library does not setup any handler other than the NullHandler, if you choose to set the 'explain'
     toggle to True it will alter the logger configuration to add a StreamHandler that is suitable for debugging.
     Custom logging format and handler can be set manually.
+
+    By default it is expected that you pass the whole payload of the sequence to be decoded. If you decide to only pass
+    a part of the sequence from the start, you can tell the decoder so by setting 'partial' to True. In this case there
+    is no guarantee that decoding the full sequence later does not throw an UnicodeDecodeError!
     """
+
+    decode = str if not partial else _partial_decode
 
     if not isinstance(sequences, (bytearray, bytes)):
         raise TypeError(
@@ -341,7 +366,7 @@ def from_bytes(
 
         try:
             if is_too_large_sequence and not is_multi_byte_decoder:
-                str(
+                decode(
                     (
                         sequences[: int(50e4)]
                         if not strip_sig_or_bom
@@ -357,14 +382,14 @@ def from_bytes(
                 # see https://github.com/jawah/charset_normalizer/issues/718
                 # and https://github.com/jawah/charset_normalizer/issues/716
                 if encoding_iana == "utf_7" and bom_or_sig_available:
-                    decoded_payload = str(
+                    decoded_payload = decode(
                         sequences,
                         encoding=encoding_iana,
                     )
                     if decoded_payload and decoded_payload[0] == "\ufeff":
                         decoded_payload = decoded_payload[1:]
                 else:
-                    decoded_payload = str(
+                    decoded_payload = decode(
                         (
                             sequences
                             if not strip_sig_or_bom
@@ -515,7 +540,7 @@ def from_bytes(
                 # see https://github.com/jawah/charset_normalizer/issues/771
                 if decoded_payload is None:
                     try:
-                        decoded_payload = str(
+                        decoded_payload = decode(
                             (
                                 sequences
                                 if not strip_sig_or_bom
@@ -555,7 +580,7 @@ def from_bytes(
             # The candidate passed chaos probing: perform the whole payload
             # decode (validation + payload reuse) that was deferred earlier.
             try:
-                decoded_payload = str(
+                decoded_payload = decode(
                     (
                         sequences
                         if not strip_sig_or_bom
