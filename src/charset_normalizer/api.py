@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import logging
 from functools import lru_cache
 from os import PathLike
@@ -47,15 +48,21 @@ IANA_SUPPORTED_MB_FIRST: list[str] = sorted(
 )
 
 
-def _partial_decode(sequences: bytes | bytearray, encoding: str):
+def _partial_decode(sequences: bytes | bytearray, encoding: str) -> str:
     try:
         return str(sequences, encoding=encoding)
     except UnicodeDecodeError as error:
-        # Allow up to 3 bytes at the end of the sequence to be "problematic"
-        if len(sequences) - error.start <= 3:
-            return str(sequences[:error.start], encoding=encoding)
-        else:
-            raise error
+        try:
+            # If possible use the incremental decoder for the encoding.
+            incdec = codecs.getincrementaldecoder(encoding)()
+            return incdec.decode(sequences)
+        except LookupError:
+            # If there is no incremental decoder for this encoding, then
+            # try decoding again with up to 3 problematic bytes removed.
+            if len(sequences) - error.start <= 3:
+                return str(sequences[:error.start], encoding=encoding)
+            else:
+                raise error
 
 
 def from_bytes(
