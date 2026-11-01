@@ -232,6 +232,29 @@ jobs:
           name: coverage-report
           path: htmlcov
 
+  publish_coverage:
+    # The coverage-report artifact as a page at https://pages.flisk.si/@jawah/coverage-report/, so it can be read
+    # without downloading the artifact. Only on pushes to master, and it runs none of this repository's code.
+    name: 📊 Publish Coverage Report (pages.flisk.si)
+    runs-on: ubuntu-latest
+    needs: coverage
+    if: always() && needs.coverage.result == 'success' && github.event_name == 'push' && github.ref_name == 'master'
+    permissions:
+      id-token: write  # pages.flisk.si checks this run's OIDC token to know the repository; no secret is used
+    steps:
+      - name: "Download report"
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: coverage-report
+          path: htmlcov
+      - name: "Publish report"
+        uses: flisk-sh/pages@c1fd27b9ab0c82f42e70dfe1e1b8ad811933b127 # v1.2.4
+        continue-on-error: true  # an outage of pages.flisk.si must not turn master red
+        with:
+          path: htmlcov
+          command: publish
+          slug: coverage-report
+
   performance:
     name: ⚡ Performance Test
     runs-on: ubuntu-latest

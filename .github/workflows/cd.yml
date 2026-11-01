@@ -15,6 +15,9 @@ jobs:
   pre_flight_check:
     name: Preflight Checks
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write  # only for the publish_coverage job in ci.yml (pages.flisk.si); a called workflow gets no more than this
 
   universal-wheel:
     name: Build Universal Wheel
