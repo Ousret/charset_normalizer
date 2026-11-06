@@ -438,7 +438,7 @@ def cut_sequence_chunks(
                     and not found_nearby
                     and chunk_prefix not in decoded_payload
                 ):
-                    for j in range(i, i - 4, -1):
+                    for j in range(i, max(i - 4, -1), -1):
                         cut_sequence = sequences[j:chunk_end]
 
                         if bom_or_sig_available and not strip_sig_or_bom:
